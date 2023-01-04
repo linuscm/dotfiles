@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+
+# --- VARIABLES --- #
+# Colors
+blank="\x1b[39m"
+blue="\x1b[34m"
+cyan="\x1b[36m"
+green="\x1b[32m"
+red="\x1b[31m"
+
+# Logo
+read -r -d '' logo <<EOF
+  █▀█▒                 █▀█▒
+ █  ██▒               █  ██▒
+ █ ███▒               █ ███▒
+  ███▒  ▆   ▆          ███▒
+                            █▒
+ ▄██████████████████▄        █▒
+         ▄▄▄▄▄    ▀███████▀  █▒
+                            █▒
+
+ [==== Updating System... ====]
+EOF
+
+printf "\n$logo\n\n"
+
+# --- PRE-CHECK --- #
+# Check if doas is installed
+superUsr="doas"
+
+if ! command -v doas &>/dev/null; then
+    superUsr="sudo"
+fi
+
+# --- COPY CONFIGURATION --- #
+# System files for NixOS
+if command -v nixos-rebuild &>/dev/null; then
+    $superUsr cp configuration.nix /etc/nixos/
+fi
+
+# Remove old Home Manager files
+printf "${red}Removing${blank} old ${cyan}Home Manager${blank} files\n"
+rm -r /home/$USER/.config/nixpkgs/*
+
+# Home Manager files
+printf "${green}Copying${blank} new ${cyan}Home Manager${blank} files\n\n"
+cp -r nixpkgs/* /home/$USER/.config/nixpkgs/
+
+# --- CREATE DIRECTORIES --- #
+printf "${green}Creating${blank} directories:\n"
+cd /home/$USER/
+mkdir Workspace Downloads Pictures
+
+cd Workspace
+mkdir Other Projects Work
+
+# --- BUILD CONFIG --- #
+# NixOS
+if command -v nixos-rebuild &>/dev/null; then
+    # Build new config if user desires
+    printf "\n${green}Build${blank} the ${blue}system${blank} configuration? (y/n)\n"
+    read userChoice
+
+    if [[ $userChoice =~ ^[Yy]$ ]]; then
+        $superUsr nixos-rebuild switch --upgrade
+
+        printf "\n${red}Clear${blank} previous ${blue}system${blank} generations? (y/n)\n"
+        read userChoice
+
+        if [[ $userChoice =~ ^[Yy]$ ]]; then
+            $superUsr nix-collect-garbage -d
+            $superUsr nixos-rebuild switch
+        fi
+    fi
+fi
+
+# Update channels
+printf "\n${green}Updating${blank} packages:\n"
+nix-channel --update
+
+# Home Manager
+printf "\n${green}Build${blank} the ${cyan}Home Manager${blank} configuration? (y/n)\n"
+read userChoice
+
+if [[ $userChoice =~ ^[Yy]$ ]]; then
+    home-manager build switch
+
+    printf "\n${red}Clear${blank} previous ${cyan}Home Manager${blank} generations? (y/n)\n"
+    read userChoice
+
+    if [[ $userChoice =~ ^[Yy]$ ]]; then
+        home-manager expire-generations $(date +"%k:%M")
+    fi
+fi
